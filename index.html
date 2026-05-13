@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🧅 Oven Bawang Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue, set, push, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ══════════════════════════════════════════════════════
+  //  🔥 KONFIGURASI FIREBASE — GANTI DENGAN PROJECT KAMU
+  // ══════════════════════════════════════════════════════
+  const firebaseConfig = {
+    apiKey:            "YOUR_API_KEY",
+    authDomain:        "your-project.firebaseapp.com",
+    databaseURL:       "https://your-project-default-rtdb.firebaseio.com",
+    projectId:         "your-project",
+    storageBucket:     "your-project.appspot.com",
+    messagingSenderId: "000000000000",
+    appId:             "1:000000000000:web:0000000000000000"
+  };
+
+  // ── Init ──────────────────────────────────────────────
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  // ── Simpan referensi Firebase ke window agar bisa diakses JS global
+  window._fbDB        = db;
+  window._fbRef       = ref;
+  window._fbSet       = set;
+  window._fbPush      = push;
+  window._fbOnValue   = onValue;
+  window._fbTimestamp = serverTimestamp;
+  window._fbReady     = true;
+
+  // ── Listener realtime data sensor dari ESP32 ──────────
+  onValue(ref(db, "oven_bawang/sensor"), (snap) => {
+    const d = snap.val();
+    if (!d) return;
+    window.updateSensorUI(d.suhu, d.kelembaban, d.timestamp);
+  });
+
+  // ── Listener status relay dari ESP32 ─────────────────
+  onValue(ref(db, "oven_bawang/relay"), (snap) => {
+    const d = snap.val();
+    if (!d) return;
+    window.updateRelayUI(d);
+  });
+
+  // ── Listener konfigurasi ──────────────────────────────
+  onValue(ref(db, "oven_bawang/config"), (snap) => {
+    const d = snap.val();
+    if (!d) return;
+    window.updateConfigUI(d);
+  });
+
+  // ── Status koneksi Firebase ───────────────────────────
+  onValue(ref(db, ".info/connected"), (snap) => {
+    window.setFirebaseStatus(snap.val() === true);
+  });
+
+  console.log("🔥 Firebase initialized");
+</script>
+
+<style>
+/* ════════════════════════════════════════════════
+   ROOT & RESET
+════════════════════════════════════════════════ */
+:root {
+  --amber:   #FF6B00;
+  --amber2:  #FF9A3C;
+  --amber3:  #FFD08A;
+  --brown:   #3D1C00;
+  --brown2:  #5C2D0A;
+  --cream:   #FFF8EE;
+  --cream2:  #FFF1D6;
+  --red:     #E8251A;
+  --red-bg:  #FFF0EF;
+  --green:   #1A9E3F;
+  --green-bg:#EDFAF2;
+  --blue:    #1565C0;
+  --gray:    #8A7B6E;
+  --gray2:   #C4B5A8;
+  --gray3:   #F5EDE4;
+  --dark:    #1A0A00;
+  --white:   #FFFFFF;
+  --shadow:  rgba(61,28,0,0.12);
+  --shadow2: rgba(61,28,0,0.20);
+  --font-display: 'Syne', sans-serif;
+  --font-mono:    'Space Mono', monospace;
+  --font-body:    'Nunito', sans-serif;
+  --radius:  16px;
+  --radius-sm: 10px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--cream);
+  color: var(--dark);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Grain overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0;
+}
+
+/* ════════════════════════════════════════════════
+   LAYOUT
+════════════════════════════════════════════════ */
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ════════════════════════════════════════════════
+   HEADER
+════════════════════════════════════════════════ */
+.header {
+  background: linear-gradient(135deg, var(--brown) 0%, var(--brown2) 60%, #7A3B10 100%);
+  padding: 20px 20px 24px;
+  position: sticky; top: 0; z-index: 50;
+  box-shadow: 0 4px 20px rgba(61,28,0,0.35);
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.logo-wrap {
+  display: flex; align-items: center; gap: 10px;
+}
+
+.logo-icon {
+  width: 42px; height: 42px;
+  background: var(--amber);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 2px 12px rgba(255,107,0,0.5);
+  animation: iconPulse 3s ease-in-out infinite;
+}
+
+@keyframes iconPulse {
+  0%,100% { box-shadow: 0 2px 12px rgba(255,107,0,0.5); }
+  50%      { box-shadow: 0 2px 24px rgba(255,107,0,0.9); }
+}
+
+.logo-text {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--cream);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.logo-sub {
+  font-size: 0.65rem;
+  color: var(--amber3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+
+.header-badges {
+  display: flex; gap: 6px; align-items: center;
+}
+
+.badge-conn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  border-radius: 99px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  transition: all 0.3s;
+}
+
+.badge-conn.online  { background: rgba(26,158,63,0.25);  color: #7BFFAA; border: 1px solid rgba(123,255,170,0.3); }
+.badge-conn.offline { background: rgba(232,37,26,0.25); color: #FFB3AF; border: 1px solid rgba(255,179,175,0.3); }
+
+.badge-fb {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  border-radius: 99px;
+  font-size: 0.62rem; font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(255,154,60,0.2);
+  color: var(--amber3);
+  border: 1px solid rgba(255,154,60,0.3);
+}
+
+.led {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; flex-shrink: 0;
+}
+
+.led.blink { animation: ledBlink 1.1s infinite; }
+@keyframes ledBlink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+.header-time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--amber3);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+/* ════════════════════════════════════════════════
+   ALERT BANNER
+════════════════════════════════════════════════ */
+.alert-banner {
+  display: none;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, var(--red) 0%, #C0392B 100%);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 10px;
+  align-items: flex-start;
+  animation: slideDown 0.3s ease;
+  box-shadow: 0 4px 16px rgba(232,37,26,0.35);
+}
+
+.alert-banner.show { display: flex; }
+@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+
+.alert-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+.alert-msg  { font-size: 0.8rem; font-weight: 800; }
+.alert-sub  { font-size: 0.7rem; font-weight: 500; opacity: 0.9; margin-top: 3px; }
+
+/* ════════════════════════════════════════════════
+   MAIN CONTENT
+════════════════════════════════════════════════ */
+.main {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ════════════════════════════════════════════════
+   SECTION LABEL
+════════════════════════════════════════════════ */
+.section-label {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray);
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: -4px;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--gray2), transparent);
+}
+
+/* ════════════════════════════════════════════════
+   SENSOR CARDS
+════════════════════════════════════════════════ */
+.sensor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sensor-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  box-shadow: 0 2px 16px var(--shadow), 0 0 0 1px rgba(255,154,60,0.12);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.sensor-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.sensor-card.temp::before { background: linear-gradient(90deg, var(--amber), var(--red)); }
+.sensor-card.humi::before { background: linear-gradient(90deg, #1976D2, #64B5F6); }
+
+.sensor-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gray);
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+
+.sensor-val {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  transition: color 0.5s;
+}
+
+.sensor-val.temp-ok     { color: var(--amber); }
+.sensor-val.temp-warn   { color: #E65100; }
+.sensor-val.temp-crit   { color: var(--red); animation: shake 0.5s ease; }
+.sensor-val.humi-ok     { color: #1565C0; }
+.sensor-val.humi-low    { color: #E65100; }
+.sensor-val.humi-high   { color: var(--blue); }
+
+@keyframes shake {
+  0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)}
+}
+
+.sensor-unit {
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
+.sensor-status {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 99px;
+  width: fit-content;
+}
+
+.sensor-status.ok   { background: var(--green-bg); color: var(--green); }
+.sensor-status.warn { background: #FFF3E0; color: #E65100; }
+.sensor-status.crit { background: var(--red-bg);   color: var(--red); }
+.sensor-status.low  { background: #E3F2FD; color: var(--blue); }
+
+.sensor-bg-icon {
+  position: absolute;
+  right: -8px; bottom: -8px;
+  font-size: 4.5rem;
+  opacity: 0.06;
+  user-select: none;
+  pointer-events: none;
+}
+
+.sensor-timestamp {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--gray2);
+  margin-top: 6px;
+}
+
+/* ════════════════════════════════════════════════
+   DEVICE CARDS
+════════════════════════════════════════════════ */
+.device-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.device-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 2px 12px var(--shadow), 0 0 0 1px rgba(61,28,0,0.06);
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+.device-card:active { transform: scale(0.97); }
+
+.device-card.active-device {
+  background: linear-gradient(135deg, #FFF8EE 0%, #FFF3DE 100%);
+  box-shadow: 0 4px 20px rgba(255,107,0,0.18), 0 0 0 1.5px var(--amber2);
+}
+
+.device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.device-icon-wrap {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  background: var(--gray3);
+}
+
+.device-card.active-device .device-icon-wrap {
+  background: linear-gradient(135deg, var(--amber), var(--amber2));
+  box-shadow: 0 2px 10px rgba(255,107,0,0.4);
+}
+
+/* LED dots */
+.dots {
+  display: flex; gap: 4px; align-items: center;
+}
+
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--gray2);
+  transition: all 0.3s;
+}
+
+.dot.active {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(26,158,63,0.7);
+  animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(0.85); }
+}
+
+.device-name {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--dark);
+  letter-spacing: -0.01em;
+}
+
+.device-info {
+  font-size: 0.65rem;
+  color: var(--gray);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+
+/* Toggle Switch */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px;
+}
+
+.toggle-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: color 0.3s;
+}
+
+.toggle-label.on  { color: var(--green); }
+.toggle-label.off { color: var(--gray); }
+
+.toggle {
+  position: relative;
+  width: 46px; height: 26px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle input { opacity: 0; width: 0; height: 0; }
+
+.toggle-track {
+  position: absolute; inset: 0;
+  border-radius: 99px;
+  background: var(--gray2);
+  transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.toggle input:checked ~ .toggle-track { background: var(--green); box-shadow: 0 0 12px rgba(26,158,63,0.5); }
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+
+.toggle input:checked ~ .toggle-track .toggle-thumb { transform: translateX(20px); }
+
+.device-duration {
+  font-size: 0.62rem;
+  color: var(--gray);
+  font-family: var(--font-mono);
+  margin-top: 6px;
+}
+
+/* ════════════════════════════════════════════════
+   THERMOSTAT CARD
+════════════════════════════════════════════════ */
+.thermostat-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: 0 2px 16px var(--shadow), 0 0 0 1px rgba(255,107,0,0.1);
+}
+
+.thermostat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.thermostat-title {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.mode-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.mode-badge.auto   { background: var(--green-bg); color: var(--green); }
+.mode-badge.manual { background: #FFF3E0; color: #E65100; }
+
+/* Dial visual */
+.dial-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+.dial-display {
+  text-align: center;
+}
+
+.dial-set-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--gray);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.dial-set-val {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 800;
+  color: var(--amber);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.dial-set-val span { font-size: 1rem; opacity: 0.6; }
+
+.dial-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dial-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--gray3);
+  background: var(--cream);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--brown);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px var(--shadow);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.dial-btn:active {
+  transform: scale(0.9);
+  background: var(--amber);
+  color: #fff;
+  border-color: var(--amber);
+}
+
+.thermostat-bars {
+  display: flex; gap: 8px;
+}
+
+.thermo-bar {
+  flex: 1;
+  background: var(--gray3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.thermo-bar-label {
+  font-size: 0.65rem;
+  color: var(--gray);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.thermo-bar-val {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+/* ════════════════════════════════════════════════
+   MODE KONTROL
+════════════════════════════════════════════════ */
+.mode-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: 0 2px 12px var(--shadow);
+}
+
+.mode-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.mode-btns {
+  display: flex; gap: 8px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 11px 8px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mode-btn.otomatis {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: transparent;
+}
+
+.mode-btn.otomatis.active {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+  box-shadow: 0 4px 14px rgba(26,158,63,0.4);
+}
+
+.mode-btn.manual {
+  background: var(--gray3);
+  color: var(--gray);
+  border-color: transparent;
+}
+
+.mode-btn.manual.active {
+  background: var(--amber);
+  color: #fff;
+  border-color: var(--amber);
+  box-shadow: 0 4px 14px rgba(255,107,0,0.4);
+}
+
+.mode-desc {
+  font-size: 0.7rem;
+  color: var(--gray);
+  margin-top: 10px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--gray3);
+  border-radius: var(--radius-sm);
+}
+
+/* ════════════════════════════════════════════════
+   INTERVAL CARD
+════════════════════════════════════════════════ */
+.interval-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: 0 2px 12px var(--shadow);
+}
+
+.interval-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.interval-chips {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  margin-bottom: 12px;
+}
+
+.chip {
+  padding: 7px 13px;
+  border-radius: 99px;
+  border: 2px solid var(--gray3);
+  background: var(--gray3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--gray);
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip.active {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(255,107,0,0.35);
+}
+
+.interval-set-btn {
+  width: 100%;
+  padding: 13px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--amber), #FF8C00);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 800;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(255,107,0,0.4);
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.interval-set-btn:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 10px rgba(255,107,0,0.3);
+}
+
+/* ════════════════════════════════════════════════
+   FIREBASE / SPREADSHEET CARD
+════════════════════════════════════════════════ */
+.data-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 2px 16px var(--shadow);
+}
+
+.data-card-header {
+  background: linear-gradient(135deg, var(--brown) 0%, var(--brown2) 100%);
+  padding: 14px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.data-card-title {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--cream);
+  display: flex; align-items: center; gap: 8px;
+}
+
+.data-count-badge {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: rgba(255,154,60,0.3);
+  color: var(--amber3);
+  font-weight: 700;
+}
+
+.data-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-bottom: 1px solid var(--gray3);
+}
+
+.data-action-btn {
+  padding: 12px 10px;
+  border: none;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.15s;
+  border-right: 1px solid var(--gray3);
+  color: var(--brown);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.data-action-btn:last-child { border-right: none; }
+.data-action-btn:active     { background: var(--gray3); }
+.data-action-btn.primary    { color: var(--amber); }
+
+.data-table-wrap {
+  overflow-x: auto;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+thead th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gray);
+  background: var(--gray3);
+  position: sticky; top: 0;
+  white-space: nowrap;
+}
+
+tbody tr { border-bottom: 1px solid var(--cream2); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--cream); }
+
+tbody td {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.td-suhu-ok   { color: var(--amber); font-weight: 700; }
+.td-suhu-crit { color: var(--red);   font-weight: 700; }
+.td-on        { color: var(--green); font-weight: 700; }
+.td-off       { color: var(--gray);  }
+.td-time      { color: var(--gray); }
+
+.data-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--gray2);
+  font-size: 0.8rem;
+}
+
+/* ════════════════════════════════════════════════
+   SPREADSHEET EXPORT CARD
+════════════════════════════════════════════════ */
+.export-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: 0 2px 12px var(--shadow);
+}
+
+.export-title {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 800;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 13px 10px;
+  border-radius: 12px;
+  border: 2px solid;
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 5px;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.export-btn .e-icon { font-size: 1.4rem; }
+
+.export-btn.csv {
+  background: var(--green-bg);
+  border-color: rgba(26,158,63,0.3);
+  color: var(--green);
+}
+.export-btn.json {
+  background: #E3F2FD;
+  border-color: rgba(21,101,192,0.3);
+  color: var(--blue);
+}
+.export-btn.sheets {
+  background: #F3E5F5;
+  border-color: rgba(123,31,162,0.3);
+  color: #7B1FA2;
+}
+.export-btn.firebase {
+  background: #FFF3E0;
+  border-color: rgba(255,107,0,0.3);
+  color: var(--amber);
+}
+
+.export-btn:active {
+  transform: scale(0.96);
+  filter: brightness(0.95);
+}
+
+/* ════════════════════════════════════════════════
+   FIREBASE CONFIG CARD
+════════════════════════════════════════════════ */
+.config-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 2px 12px var(--shadow);
+}
+
+.config-header {
+  background: linear-gradient(135deg, #E65100, var(--amber));
+  padding: 12px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.config-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #fff;
+  display: flex; align-items: center; gap: 7px;
+}
+
+.config-toggle-btn {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+.config-body {
+  padding: 16px 18px;
+  display: none;
+  gap: 10px;
+  flex-direction: column;
+}
+
+.config-body.open { display: flex; }
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.config-field label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray);
+}
+
+.config-field input {
+  padding: 10px 13px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--gray3);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--dark);
+  background: var(--cream);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.config-field input:focus { border-color: var(--amber); }
+
+.config-save-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--amber), #E65100);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-family: var(--font-display);
+  cursor: pointer;
+  margin-top: 4px;
+  box-shadow: 0 3px 12px rgba(255,107,0,0.3);
+}
+
+/* ════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════ */
+.toast {
+  position: fixed;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--dark);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  white-space: nowrap;
+  z-index: 999;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  pointer-events: none;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.toast.success { background: var(--green); }
+.toast.error   { background: var(--red); }
+.toast.info    { background: var(--amber); }
+
+/* ════════════════════════════════════════════════
+   FOOTER
+════════════════════════════════════════════════ */
+.footer {
+  text-align: center;
+  padding: 20px 16px 32px;
+  font-size: 0.68rem;
+  color: var(--gray2);
+  font-family: var(--font-mono);
+  line-height: 1.8;
+}
+
+.footer strong { color: var(--amber); }
+
+/* ════════════════════════════════════════════════
+   LOADING SHIMMER
+════════════════════════════════════════════════ */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--gray3) 25%, #e8ddd4 50%, var(--gray3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+  color: transparent !important;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ HEADER ══════════════════════════════════════════ -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo-wrap">
+        <div class="logo-icon">🧅</div>
+        <div>
+          <div class="logo-text">Oven Bawang Pro</div>
+          <div class="logo-sub">ESP32 · DHT22 · IoT Control</div>
+        </div>
+      </div>
+      <div class="header-badges">
+        <div class="badge-conn offline" id="connBadge">
+          <div class="led blink" id="connLed"></div>
+          <span id="connTxt">OFFLINE</span>
+        </div>
+        <div class="badge-fb" id="fbBadge">
+          <span>🔥</span>
+          <span id="fbTxt">FB</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-time" id="headerTime">--:--:--  |  Menghubungkan...</div>
+  </header>
+
+  <!-- ══ ALERT ══════════════════════════════════════════ -->
+  <div class="alert-banner" id="alertBanner">
+    <div class="alert-icon">⚠️</div>
+    <div>
+      <div class="alert-msg" id="alertMsg">PERINGATAN SUHU TINGGI!</div>
+      <div class="alert-sub" id="alertSub"></div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ══ SENSOR ══════════════════════════════════════ -->
+    <div class="section-label">📡 Nilai Sensor Real-time</div>
+
+    <div class="sensor-grid">
+      <!-- Suhu -->
+      <div class="sensor-card temp">
+        <div class="sensor-label">🌡 Suhu</div>
+        <div>
+          <span class="sensor-val temp-ok" id="sensorTemp">--.-</span>
+          <span class="sensor-unit">°C</span>
+        </div>
+        <div class="sensor-status ok" id="tempStatus">● Optimal</div>
+        <div class="sensor-timestamp" id="tempTime">--:--:--</div>
+        <div class="sensor-bg-icon">🌡</div>
+      </div>
+
+      <!-- Kelembaban -->
+      <div class="sensor-card humi">
+        <div class="sensor-label">💧 Kelembaban</div>
+        <div>
+          <span class="sensor-val humi-ok" id="sensorHumi">--.-</span>
+          <span class="sensor-unit">%</span>
+        </div>
+        <div class="sensor-status ok" id="humiStatus">● Normal</div>
+        <div class="sensor-timestamp" id="humiTime">--:--:--</div>
+        <div class="sensor-bg-icon">💧</div>
+      </div>
+    </div>
+
+    <!-- ══ THERMOSTAT ══════════════════════════════════ -->
+    <div class="section-label">🌡 Modul Thermostat</div>
+
+    <div class="thermostat-card">
+      <div class="thermostat-header">
+        <div class="thermostat-title">⚙️ Pengaturan Suhu</div>
+        <div class="mode-badge auto" id="thermoModeBadge">AUTO</div>
+      </div>
+
+      <div class="dial-wrap">
+        <div class="dial-btns">
+          <button class="dial-btn" onclick="adjustThreshold(1)" title="Naikan">+</button>
+          <button class="dial-btn" onclick="adjustThreshold(-1)" title="Turunkan">−</button>
+        </div>
+        <div class="dial-display">
+          <div class="dial-set-label">Target Suhu</div>
+          <div class="dial-set-val" id="thresholdVal">60<span>°C</span></div>
+          <div style="font-size:0.65rem;color:var(--gray);font-family:var(--font-mono);margin-top:4px">
+            Histeresis: <span id="hystVal">2</span>°C
+          </div>
+        </div>
+        <div class="dial-btns" style="visibility:hidden">
+          <button class="dial-btn">+</button>
+          <button class="dial-btn">−</button>
+        </div>
+      </div>
+
+      <div class="thermostat-bars">
+        <div class="thermo-bar">
+          <span class="thermo-bar-label">ON saat ≥</span>
+          <span class="thermo-bar-val" id="threshOn">60°C</span>
+        </div>
+        <div class="thermo-bar">
+          <span class="thermo-bar-label">OFF saat &lt;</span>
+          <span class="thermo-bar-val" id="threshOff">58°C</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PERANGKAT ══════════════════════════════════ -->
+    <div class="section-label">⚡ Kontrol Perangkat</div>
+
+    <div class="device-grid">
+
+      <!-- Fan -->
+      <div class="device-card" id="cardFan">
+        <div class="device-header">
+          <div class="device-icon-wrap">💨</div>
+          <div class="dots">
+            <div class="dot" id="dotFan1"></div>
+            <div class="dot" id="dotFan2"></div>
+            <div class="dot" id="dotFan3"></div>
+          </div>
+        </div>
+        <div class="device-name">Fan Sirkulasi</div>
+        <div class="device-info">DHT22 • GPIO 26</div>
+        <div class="toggle-row">
+          <span class="toggle-label off" id="fanLabel">OFF</span>
+          <label class="toggle">
+            <input type="checkbox" id="toggleFan" onchange="toggleDevice('fan', this.checked)">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+        </div>
+        <div class="device-duration" id="fanDur">Durasi nyala: 0 dtk</div>
+      </div>
+
+      <!-- Lampu Pijar -->
+      <div class="device-card" id="cardLamp">
+        <div class="device-header">
+          <div class="device-icon-wrap">💡</div>
+          <div class="dots">
+            <div class="dot" id="dotLamp1"></div>
+            <div class="dot" id="dotLamp2"></div>
+            <div class="dot" id="dotLamp3"></div>
+          </div>
+        </div>
+        <div class="device-name">Lampu Pijar 60W</div>
+        <div class="device-info">Relay • GPIO 27</div>
+        <div class="toggle-row">
+          <span class="toggle-label off" id="lampLabel">OFF</span>
+          <label class="toggle">
+            <input type="checkbox" id="toggleLamp" onchange="toggleDevice('lamp', this.checked)">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+        </div>
+        <div class="device-duration" id="lampDur">Durasi nyala: 0 dtk</div>
+      </div>
+
+    </div>
+
+    <!-- ══ MODE KONTROL ════════════════════════════════ -->
+    <div class="section-label">🤖 Mode Kontrol Beban</div>
+
+    <div class="mode-card">
+      <div class="mode-title">⚙️ Mode Operasi Sistem</div>
+      <div class="mode-btns">
+        <button class="mode-btn otomatis active" id="btnOtomatis" onclick="setMode('otomatis')">
+          🤖 Otomatis
+        </button>
+        <button class="mode-btn manual" id="btnManual" onclick="setMode('manual')">
+          🖐 Manual
+        </button>
+      </div>
+      <div class="mode-desc" id="modeDesc">
+        🤖 <strong>Mode Otomatis:</strong> Sistem dikontrol ESP32 sesuai nilai thermostat. Fan & Lampu Pijar menyala/mati berdasarkan suhu sensor DHT22.
+      </div>
+    </div>
+
+    <!-- ══ INTERVAL DATA ═══════════════════════════════ -->
+    <div class="section-label">⏱ Interval Pengambilan Data</div>
+
+    <div class="interval-card">
+      <div class="interval-title">📊 Frekuensi Log Firebase</div>
+      <div class="interval-chips">
+        <div class="chip" data-val="5"   onclick="selectInterval(this)">5 dtk</div>
+        <div class="chip active" data-val="10"  onclick="selectInterval(this)">10 dtk</div>
+        <div class="chip" data-val="30"  onclick="selectInterval(this)">30 dtk</div>
+        <div class="chip" data-val="60"  onclick="selectInterval(this)">1 mnt</div>
+        <div class="chip" data-val="300" onclick="selectInterval(this)">5 mnt</div>
+        <div class="chip" data-val="600" onclick="selectInterval(this)">10 mnt</div>
+      </div>
+      <button class="interval-set-btn" onclick="applyInterval()">
+        ✅ Terapkan Interval → <span id="intervalLabel">10 dtk</span>
+      </button>
+    </div>
+
+    <!-- ══ FIREBASE LOG TABLE ══════════════════════════ -->
+    <div class="section-label">🔥 Data Log Firebase</div>
+
+    <div class="data-card">
+      <div class="data-card-header">
+        <div class="data-card-title">📋 Riwayat Sensor</div>
+        <div class="data-count-badge" id="logCountBadge">0 baris</div>
+      </div>
+      <div class="data-actions">
+        <button class="data-action-btn primary" onclick="refreshLog()">🔄 Refresh</button>
+        <button class="data-action-btn" onclick="clearLocalLog()">🗑 Bersihkan</button>
+      </div>
+      <div class="data-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Waktu</th>
+              <th>Suhu°C</th>
+              <th>RH%</th>
+              <th>Fan</th>
+              <th>Lampu</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr><td colspan="6" class="data-empty">Menunggu data dari Firebase...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ EXPORT / SPREADSHEET ════════════════════════ -->
+    <div class="section-label">📤 Ekspor & Spreadsheet</div>
+
+    <div class="export-card">
+      <div class="export-title">📊 Download & Integrasi Data</div>
+      <div class="export-grid">
+        <button class="export-btn csv" onclick="exportCSV()">
+          <span class="e-icon">📄</span>
+          <span>Download CSV</span>
+        </button>
+        <button class="export-btn json" onclick="exportJSON()">
+          <span class="e-icon">{ }</span>
+          <span>Export JSON</span>
+        </button>
+        <button class="export-btn sheets" onclick="openSheets()">
+          <span class="e-icon">📊</span>
+          <span>Google Sheets</span>
+        </button>
+        <button class="export-btn firebase" onclick="pushAllToFirebase()">
+          <span class="e-icon">🔥</span>
+          <span>Push Firebase</span>
+        </button>
+      </div>
+      <div style="margin-top:12px;font-size:0.7rem;color:var(--gray);line-height:1.6;padding:10px 12px;background:var(--gray3);border-radius:10px">
+        📌 <strong>Google Sheets:</strong> Buka Sheets → Extensions → Apps Script → paste script di bawah untuk auto-import dari Firebase.
+      </div>
+    </div>
+
+    <!-- ══ APPS SCRIPT INFO ════════════════════════════ -->
+    <div class="config-card">
+      <div class="config-header">
+        <div class="config-title">📋 Google Sheets Apps Script</div>
+        <button class="config-toggle-btn" onclick="toggleConfig('appsScript')">Tampilkan</button>
+      </div>
+      <div class="config-body" id="appsScript">
+        <div style="background:#1E1E2E;border-radius:10px;padding:14px;overflow-x:auto">
+          <pre style="font-size:0.65rem;color:#A6E3A1;font-family:var(--font-mono);line-height:1.7;white-space:pre-wrap"><code id="appsScriptCode">// ─── Google Apps Script ─────────────────────────
+// Extensions → Apps Script → paste ini → Run
+
+const FIREBASE_URL =
+  "https://your-project-rtdb.firebaseio.com";
+const PROJECT_KEY  = "oven_bawang";
+
+function importFromFirebase() {
+  const url = `${FIREBASE_URL}/${PROJECT_KEY}/log.json`;
+  const res  = UrlFetchApp.fetch(url);
+  const data = JSON.parse(res.getContentText());
+
+  const sheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName("Data Log")
+    || SpreadsheetApp.getActiveSpreadsheet()
+         .insertSheet("Data Log");
+
+  // Header
+  sheet.getRange(1,1,1,6).setValues([[
+    "Waktu","Suhu (°C)","Kelembaban (%)","Fan","Lampu","Status"
+  ]]);
+
+  const rows = Object.values(data || {});
+  rows.sort((a,b) => a.ts - b.ts);
+
+  rows.forEach((d, i) => {
+    sheet.getRange(i+2,1,1,6).setValues([[
+      new Date(d.ts),
+      d.suhu, d.humi,
+      d.fan ? "ON" : "OFF",
+      d.lampu ? "ON" : "OFF",
+      d.suhu >= 60 ? "PANAS" : "NORMAL"
+    ]]);
+  });
+
+  SpreadsheetApp.getUi().alert(
+    `✅ Import ${rows.length} baris selesai!`
+  );
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("🧅 Oven Bawang")
+    .addItem("📥 Import dari Firebase","importFromFirebase")
+    .addToUi();
+}</code></pre>
+        </div>
+        <button class="config-save-btn" onclick="copyAppsScript()" style="background:linear-gradient(135deg,#1A9E3F,#27AE60)">
+          📋 Salin Script
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ KONFIGURASI FIREBASE ════════════════════════ -->
+    <div class="config-card">
+      <div class="config-header">
+        <div class="config-title">🔥 Konfigurasi Firebase</div>
+        <button class="config-toggle-btn" onclick="toggleConfig('fbConfig')">Ubah</button>
+      </div>
+      <div class="config-body" id="fbConfig">
+        <div class="config-field">
+          <label>Firebase Database URL</label>
+          <input type="text" id="cfgDbUrl" placeholder="https://your-project-rtdb.firebaseio.com">
+        </div>
+        <div class="config-field">
+          <label>Project ID</label>
+          <input type="text" id="cfgProjectId" placeholder="your-project-id">
+        </div>
+        <div class="config-field">
+          <label>ESP32 IP Address (opsional)</label>
+          <input type="text" id="cfgEspIp" placeholder="192.168.1.100">
+        </div>
+        <div class="config-field">
+          <label>Node Path Firebase</label>
+          <input type="text" id="cfgPath" value="oven_bawang" placeholder="oven_bawang">
+        </div>
+        <button class="config-save-btn" onclick="saveConfig()">💾 Simpan Konfigurasi</button>
+      </div>
+    </div>
+
+    <!-- ══ FOOTER ══════════════════════════════════════ -->
+    <div class="footer">
+      <strong>🧅 Oven Bawang Pro</strong> — ESP32 IoT Dashboard<br>
+      DHT22 · Fan · Modul Thermostat · Lampu Pijar 60W<br>
+      Firebase Realtime Database · Google Sheets Integration<br><br>
+      <span id="footerUptime">Uptime: 0 dtk</span>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════ -->
+<script>
+// ────────────────────────────────────────────────────────
+//  STATE
+// ────────────────────────────────────────────────────────
+const state = {
+  temp:       null,
+  humi:       null,
+  fanOn:      false,
+  lampOn:     false,
+  mode:       'otomatis',   // 'otomatis' | 'manual'
+  threshold:  60,
+  hysteresis: 2,
+  interval:   10,           // detik
+  connected:  false,
+  fbConnected:false,
+  logData:    [],
+  uptime:     0,
+  fanDuration:  0,
+  lampDuration: 0,
+  lastTs:     null,
+};
+
+// ── Load config from localStorage ────────────────────────
+function loadConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem('ovenbawang_cfg') || '{}');
+    if (c.threshold)  state.threshold  = c.threshold;
+    if (c.hysteresis) state.hysteresis = c.hysteresis;
+    if (c.interval)   state.interval   = c.interval;
+    if (c.mode)       state.mode       = c.mode;
+    document.getElementById('thresholdVal').textContent = state.threshold + '°C';
+    document.getElementById('threshOn').textContent    = state.threshold + '°C';
+    document.getElementById('threshOff').textContent   = (state.threshold - state.hysteresis) + '°C';
+    document.getElementById('hystVal').textContent     = state.hysteresis;
+    selectIntervalByVal(state.interval);
+    if (c.espIp) document.getElementById('cfgEspIp').value = c.espIp;
+  } catch(e) {}
+}
+
+// ────────────────────────────────────────────────────────
+//  TOAST
+// ────────────────────────────────────────────────────────
+let toastT = null;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = `toast ${type} show`;
+  if (toastT) clearTimeout(toastT);
+  toastT = setTimeout(() => el.className = 'toast', 2600);
+}
+
+// ────────────────────────────────────────────────────────
+//  CONNECTION STATUS
+// ────────────────────────────────────────────────────────
+function setConnected(ok) {
+  state.connected = ok;
+  const badge = document.getElementById('connBadge');
+  const led   = document.getElementById('connLed');
+  const txt   = document.getElementById('connTxt');
+  badge.className = `badge-conn ${ok ? 'online' : 'offline'}`;
+  led.className   = `led ${ok ? '' : 'blink'}`;
+  txt.textContent = ok ? 'ONLINE' : 'OFFLINE';
+}
+
+window.setFirebaseStatus = function(ok) {
+  state.fbConnected = ok;
+  document.getElementById('fbTxt').textContent = ok ? '🔥 ON' : '🔥 –';
+  setConnected(ok);
+};
+
+// ────────────────────────────────────────────────────────
+//  SENSOR UI UPDATE (dipanggil oleh Firebase listener)
+// ────────────────────────────────────────────────────────
+window.updateSensorUI = function(suhu, humi, ts) {
+  state.temp = suhu;
+  state.humi = humi;
+  state.lastTs = ts;
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('id-ID');
+
+  // ── Suhu ──
+  const tEl = document.getElementById('sensorTemp');
+  tEl.textContent = suhu.toFixed(1);
+  document.getElementById('tempTime').textContent = timeStr;
+
+  let tempClass = 'temp-ok', statusClass = 'ok', statusTxt = '● Optimal';
+  if (suhu >= state.threshold) {
+    tempClass = 'temp-crit'; statusClass = 'crit'; statusTxt = '● Suhu Kritis!';
+  } else if (suhu >= state.threshold - 5) {
+    tempClass = 'temp-warn'; statusClass = 'warn'; statusTxt = '⚠ Mendekati Batas';
+  }
+  tEl.className = `sensor-val ${tempClass}`;
+  const tsEl = document.getElementById('tempStatus');
+  tsEl.className = `sensor-status ${statusClass}`;
+  tsEl.textContent = statusTxt;
+
+  // ── Humi ──
+  const hEl = document.getElementById('sensorHumi');
+  hEl.textContent = humi.toFixed(1);
+  document.getElementById('humiTime').textContent = timeStr;
+
+  let humiClass = 'humi-ok', hStatusClass = 'ok', hStatusTxt = '● Normal';
+  if (humi < 30) { humiClass = 'humi-low'; hStatusClass = 'warn'; hStatusTxt = '⚠ Terlalu Kering'; }
+  else if (humi > 80) { humiClass = 'humi-high'; hStatusClass = 'low'; hStatusTxt = 'ℹ Terlalu Lembab'; }
+  hEl.className = `sensor-val ${humiClass}`;
+  const hsEl = document.getElementById('humiStatus');
+  hsEl.className = `sensor-status ${hStatusClass}`;
+  hsEl.textContent = hStatusTxt;
+
+  // ── Alert ──
+  const alert = document.getElementById('alertBanner');
+  if (suhu >= state.threshold) {
+    alert.className = 'alert-banner show';
+    document.getElementById('alertMsg').textContent = `SUHU KRITIS: ${suhu.toFixed(1)}°C!`;
+    document.getElementById('alertSub').textContent =
+      `Melebihi threshold ${state.threshold}°C — Fan aktif, Lampu Pijar mati (mode auto).`;
+  } else {
+    alert.className = 'alert-banner';
+  }
+
+  // ── Auto mode control ──
+  if (state.mode === 'otomatis') {
+    const shouldFan  = suhu >= state.threshold;
+    const shouldLamp = suhu < (state.threshold - state.hysteresis);
+    if (state.fanOn !== shouldFan)   setDeviceLocal('fan',  shouldFan);
+    if (state.lampOn !== shouldLamp) setDeviceLocal('lamp', shouldLamp);
+  }
+
+  // ── Push log ke local storage ──
+  pushLocalLog(suhu, humi);
+};
+
+// ────────────────────────────────────────────────────────
+//  RELAY UI UPDATE
+// ────────────────────────────────────────────────────────
+window.updateRelayUI = function(d) {
+  if (d.fan  !== undefined) setDeviceUI('fan',  d.fan);
+  if (d.lamp !== undefined) setDeviceUI('lamp', d.lamp);
+};
+
+function setDeviceUI(dev, isOn) {
+  if (dev === 'fan') {
+    state.fanOn = isOn;
+    document.getElementById('toggleFan').checked = isOn;
+    document.getElementById('fanLabel').textContent = isOn ? 'ON' : 'OFF';
+    document.getElementById('fanLabel').className  = `toggle-label ${isOn ? 'on' : 'off'}`;
+    const card = document.getElementById('cardFan');
+    card.className = `device-card ${isOn ? 'active-device' : ''}`;
+    ['dotFan1','dotFan2','dotFan3'].forEach(id => {
+      document.getElementById(id).className = `dot ${isOn ? 'active' : ''}`;
+    });
+  } else {
+    state.lampOn = isOn;
+    document.getElementById('toggleLamp').checked = isOn;
+    document.getElementById('lampLabel').textContent = isOn ? 'ON' : 'OFF';
+    document.getElementById('lampLabel').className  = `toggle-label ${isOn ? 'on' : 'off'}`;
+    const card = document.getElementById('cardLamp');
+    card.className = `device-card ${isOn ? 'active-device' : ''}`;
+    ['dotLamp1','dotLamp2','dotLamp3'].forEach(id => {
+      document.getElementById(id).className = `dot ${isOn ? 'active' : ''}`;
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────
+//  CONFIG UI UPDATE
+// ────────────────────────────────────────────────────────
+window.updateConfigUI = function(d) {
+  if (d.threshold) {
+    state.threshold  = d.threshold;
+    state.hysteresis = d.hysteresis || 2;
+    document.getElementById('thresholdVal').textContent = state.threshold + '°C';
+    document.getElementById('threshOn').textContent    = state.threshold + '°C';
+    document.getElementById('threshOff').textContent   = (state.threshold - state.hysteresis) + '°C';
+  }
+  if (d.mode) setMode(d.mode, false);
+};
+
+// ────────────────────────────────────────────────────────
+//  TOGGLE DEVICE
+// ────────────────────────────────────────────────────────
+function toggleDevice(dev, isOn) {
+  setDeviceLocal(dev, isOn);
+
+  // Push ke Firebase
+  if (window._fbReady) {
+    try {
+      window._fbSet(
+        window._fbRef(window._fbDB, `oven_bawang/relay/${dev}`),
+        isOn
+      );
+    } catch(e) { console.warn('Firebase set error', e); }
+  }
+
+  showToast(
+    `${dev === 'fan' ? '💨 Fan' : '💡 Lampu'} ${isOn ? 'dinyalakan' : 'dimatikan'}`,
+    isOn ? 'success' : 'info'
+  );
+}
+
+function setDeviceLocal(dev, isOn) {
+  setDeviceUI(dev, isOn);
+}
+
+// ────────────────────────────────────────────────────────
+//  THERMOSTAT
+// ────────────────────────────────────────────────────────
+function adjustThreshold(delta) {
+  state.threshold = Math.max(30, Math.min(100, state.threshold + delta));
+  document.getElementById('thresholdVal').textContent = state.threshold + '°C';
+  document.getElementById('threshOn').textContent    = state.threshold + '°C';
+  document.getElementById('threshOff').textContent   = (state.threshold - state.hysteresis) + '°C';
+
+  // Push ke Firebase
+  if (window._fbReady) {
+    try {
+      window._fbSet(
+        window._fbRef(window._fbDB, 'oven_bawang/config/threshold'),
+        state.threshold
+      );
+    } catch(e) {}
+  }
+
+  saveLocalConfig();
+  showToast(`🌡 Threshold: ${state.threshold}°C`, 'info');
+}
+
+// ────────────────────────────────────────────────────────
+//  MODE
+// ────────────────────────────────────────────────────────
+function setMode(mode, pushFb = true) {
+  state.mode = mode;
+  document.getElementById('btnOtomatis').className = `mode-btn otomatis ${mode === 'otomatis' ? 'active' : ''}`;
+  document.getElementById('btnManual').className   = `mode-btn manual   ${mode === 'manual'   ? 'active' : ''}`;
+  document.getElementById('thermoModeBadge').textContent = mode === 'otomatis' ? 'AUTO' : 'MANUAL';
+  document.getElementById('thermoModeBadge').className   = `mode-badge ${mode === 'otomatis' ? 'auto' : 'manual'}`;
+
+  const descs = {
+    otomatis: '🤖 <strong>Mode Otomatis:</strong> Sistem dikontrol ESP32 sesuai nilai thermostat. Fan & Lampu Pijar menyala/mati berdasarkan suhu sensor DHT22.',
+    manual:   '🖐 <strong>Mode Manual:</strong> Kamu mengontrol Fan dan Lampu Pijar secara langsung. Sistem tidak akan override keputusanmu.'
+  };
+  document.getElementById('modeDesc').innerHTML = descs[mode];
+
+  if (pushFb && window._fbReady) {
+    try {
+      window._fbSet(
+        window._fbRef(window._fbDB, 'oven_bawang/config/mode'),
+        mode
+      );
+    } catch(e) {}
+  }
+  saveLocalConfig();
+}
+
+// ────────────────────────────────────────────────────────
+//  INTERVAL
+// ────────────────────────────────────────────────────────
+function selectInterval(el) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  state.interval = parseInt(el.dataset.val);
+  updateIntervalLabel();
+}
+
+function selectIntervalByVal(val) {
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('active', parseInt(c.dataset.val) === val);
+  });
+  updateIntervalLabel();
+}
+
+function updateIntervalLabel() {
+  const v = state.interval;
+  const label = v < 60 ? `${v} dtk` : `${v/60} mnt`;
+  document.getElementById('intervalLabel').textContent = label;
+}
+
+function applyInterval() {
+  if (window._fbReady) {
+    try {
+      window._fbSet(
+        window._fbRef(window._fbDB, 'oven_bawang/config/interval'),
+        state.interval
+      );
+    } catch(e) {}
+  }
+  saveLocalConfig();
+  showToast(`⏱ Interval log: ${state.interval} detik diterapkan`, 'success');
+}
+
+// ────────────────────────────────────────────────────────
+//  LOG DATA
+// ────────────────────────────────────────────────────────
+function pushLocalLog(suhu, humi) {
+  const now = new Date();
+  state.logData.unshift({
+    time: now.toLocaleTimeString('id-ID'),
+    suhu,
+    humi,
+    fan:   state.fanOn,
+    lampu: state.lampOn,
+  });
+  if (state.logData.length > 50) state.logData.pop();
+
+  // Push ke Firebase log
+  if (window._fbReady) {
+    try {
+      window._fbPush(
+        window._fbRef(window._fbDB, 'oven_bawang/log'),
+        {
+          ts: Date.now(),
+          suhu, humi,
+          fan:   state.fanOn,
+          lampu: state.lampOn,
+        }
+      );
+    } catch(e) {}
+  }
+
+  renderLogTable();
+}
+
+function renderLogTable() {
+  const tbody = document.getElementById('logTableBody');
+  document.getElementById('logCountBadge').textContent = `${state.logData.length} baris`;
+
+  if (state.logData.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="data-empty">Belum ada data...</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = state.logData.map((d, i) => {
+    const tc = d.suhu >= state.threshold ? 'td-suhu-crit' : 'td-suhu-ok';
+    return `<tr>
+      <td style="color:var(--gray2)">${i + 1}</td>
+      <td class="td-time">${d.time}</td>
+      <td class="${tc}">${d.suhu.toFixed(1)}</td>
+      <td style="color:var(--blue)">${d.humi.toFixed(1)}</td>
+      <td class="${d.fan   ? 'td-on' : 'td-off'}">${d.fan   ? 'ON' : 'OFF'}</td>
+      <td class="${d.lampu ? 'td-on' : 'td-off'}">${d.lampu ? 'ON' : 'OFF'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function refreshLog() {
+  // Re-fetch dari Firebase
+  if (window._fbReady) {
+    try {
+      window._fbOnValue(
+        window._fbRef(window._fbDB, 'oven_bawang/log'),
+        (snap) => {
+          const d = snap.val();
+          if (!d) return;
+          const rows = Object.values(d)
+            .sort((a,b) => b.ts - a.ts)
+            .slice(0, 50);
+          state.logData = rows.map(r => ({
+            time:  new Date(r.ts).toLocaleTimeString('id-ID'),
+            suhu:  r.suhu,
+            humi:  r.humi,
+            fan:   r.fan,
+            lampu: r.lampu,
+          }));
+          renderLogTable();
+          showToast('🔄 Data diperbarui dari Firebase', 'success');
+        },
+        { onlyOnce: true }
+      );
+    } catch(e) { showToast('❌ Gagal fetch Firebase', 'error'); }
+  } else {
+    showToast('⚠ Firebase belum terhubung', 'error');
+  }
+}
+
+function clearLocalLog() {
+  state.logData = [];
+  renderLogTable();
+  showToast('🗑 Tabel dibersihkan', 'info');
+}
+
+// ────────────────────────────────────────────────────────
+//  EXPORT
+// ────────────────────────────────────────────────────────
+function exportCSV() {
+  if (state.logData.length === 0) { showToast('⚠ Tidak ada data untuk diekspor', 'error'); return; }
+
+  let csv = 'No,Waktu,Suhu(°C),Kelembaban(%),Fan,Lampu,Status\n';
+  state.logData.forEach((d, i) => {
+    const status = d.suhu >= state.threshold ? 'PANAS' : 'NORMAL';
+    csv += `${i+1},${d.time},${d.suhu.toFixed(2)},${d.humi.toFixed(2)},${d.fan?'ON':'OFF'},${d.lampu?'ON':'OFF'},${status}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `oven_bawang_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📄 CSV berhasil didownload', 'success');
+}
+
+function exportJSON() {
+  if (state.logData.length === 0) { showToast('⚠ Tidak ada data untuk diekspor', 'error'); return; }
+
+  const payload = {
+    device:    'Oven Bawang Pro',
+    exported:  new Date().toISOString(),
+    threshold: state.threshold,
+    count:     state.logData.length,
+    data:      state.logData,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `oven_bawang_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📦 JSON berhasil didownload', 'success');
+}
+
+function openSheets() {
+  const url = 'https://docs.google.com/spreadsheets/create';
+  window.open(url, '_blank');
+  showToast('📊 Google Sheets dibuka di tab baru', 'info');
+}
+
+function pushAllToFirebase() {
+  if (!window._fbReady) { showToast('❌ Firebase belum terhubung', 'error'); return; }
+  if (state.logData.length === 0) { showToast('⚠ Tidak ada data', 'error'); return; }
+
+  let count = 0;
+  state.logData.forEach(d => {
+    try {
+      window._fbPush(
+        window._fbRef(window._fbDB, 'oven_bawang/log'),
+        { ts: Date.now(), suhu: d.suhu, humi: d.humi, fan: d.fan, lampu: d.lampu }
+      );
+      count++;
+    } catch(e) {}
+  });
+  showToast(`🔥 ${count} baris dipush ke Firebase`, 'success');
+}
+
+// ────────────────────────────────────────────────────────
+//  TOGGLE CONFIG PANELS
+// ────────────────────────────────────────────────────────
+function toggleConfig(id) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.toggle('open');
+  const btn = el.previousElementSibling.querySelector('.config-toggle-btn');
+  btn.textContent = isOpen ? 'Sembunyikan' : (id === 'appsScript' ? 'Tampilkan' : 'Ubah');
+}
+
+function copyAppsScript() {
+  const code = document.getElementById('appsScriptCode').textContent;
+  navigator.clipboard.writeText(code)
+    .then(() => showToast('📋 Script disalin ke clipboard', 'success'))
+    .catch(() => showToast('⚠ Gagal menyalin, pilih manual', 'error'));
+}
+
+function saveConfig() {
+  const cfg = {
+    espIp:     document.getElementById('cfgEspIp').value,
+    dbUrl:     document.getElementById('cfgDbUrl').value,
+    projectId: document.getElementById('cfgProjectId').value,
+    path:      document.getElementById('cfgPath').value || 'oven_bawang',
+  };
+  localStorage.setItem('ovenbawang_firebase', JSON.stringify(cfg));
+  showToast('💾 Konfigurasi disimpan', 'success');
+}
+
+// ────────────────────────────────────────────────────────
+//  LOCAL CONFIG PERSIST
+// ────────────────────────────────────────────────────────
+function saveLocalConfig() {
+  localStorage.setItem('ovenbawang_cfg', JSON.stringify({
+    threshold:  state.threshold,
+    hysteresis: state.hysteresis,
+    interval:   state.interval,
+    mode:       state.mode,
+    espIp:      document.getElementById('cfgEspIp').value,
+  }));
+}
+
+// ────────────────────────────────────────────────────────
+//  CLOCK & UPTIME
+// ────────────────────────────────────────────────────────
+function updateClock() {
+  state.uptime++;
+  const now = new Date();
+  document.getElementById('headerTime').textContent =
+    now.toLocaleTimeString('id-ID') + '  |  Uptime: ' + fmtUptime(state.uptime);
+  document.getElementById('footerUptime').textContent =
+    'Uptime: ' + fmtUptime(state.uptime);
+
+  // Duration counters
+  if (state.fanOn)  { state.fanDuration++;  document.getElementById('fanDur').textContent  = `Durasi nyala: ${fmtUptime(state.fanDuration)}`; }
+  if (state.lampOn) { state.lampDuration++; document.getElementById('lampDur').textContent = `Durasi nyala: ${fmtUptime(state.lampDuration)}`; }
+}
+
+function fmtUptime(s) {
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sc = s%60;
+  if (h > 0) return `${h}j ${m}m ${sc}d`;
+  if (m > 0) return `${m}m ${sc}d`;
+  return `${sc} dtk`;
+}
+
+// ────────────────────────────────────────────────────────
+//  DEMO MODE — aktif jika Firebase tidak terhubung
+// ────────────────────────────────────────────────────────
+let demoInterval = null;
+
+function startDemoMode() {
+  let t = 45.0, h = 55.0;
+  demoInterval = setInterval(() => {
+    // Simulasi suhu naik/turun
+    t += (Math.random() - 0.4) * 1.5;
+    h += (Math.random() - 0.5) * 1.2;
+    t = Math.max(30, Math.min(80, t));
+    h = Math.max(20, Math.min(90, h));
+    window.updateSensorUI(t, h, Date.now());
+    setConnected(true); // demo = connected
+  }, state.interval * 1000);
+}
+
+// Mulai demo setelah 3 detik jika Firebase belum konek
+setTimeout(() => {
+  if (!state.fbConnected) {
+    showToast('🎮 Mode Demo aktif (Firebase belum dikonfigurasi)', 'info');
+    startDemoMode();
+  }
+}, 3000);
+
+// ────────────────────────────────────────────────────────
+//  INIT
+// ────────────────────────────────────────────────────────
+loadConfig();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>
